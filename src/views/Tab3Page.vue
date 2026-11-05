@@ -13,6 +13,17 @@
         </ion-card-header>
 
         <ion-card-content>
+          <ion-button
+            expand="block"
+            fill="outline"
+            class="ion-margin-bottom"
+            :disabled="escaneando"
+            @click="escanearQr"
+          >
+            <ion-icon slot="start" :icon="qrCodeOutline" />
+            {{ escaneando ? 'Escaneando...' : 'Escanear QR' }}
+          </ion-button>
+
           <ion-input v-model="title" label="Título" label-placement="floating" fill="outline" placeholder="foo" />
 
           <ion-textarea
@@ -85,7 +96,10 @@ import {
   IonButton,
   IonSpinner,
   IonText,
+  IonIcon,
 } from '@ionic/vue';
+import { CapacitorBarcodeScanner, CapacitorBarcodeScannerTypeHint } from '@capacitor/barcode-scanner';
+import { qrCodeOutline } from 'ionicons/icons';
 import { onMounted, ref } from 'vue';
 import type { Posts } from '@/interfaces/Posts';
 import type { Usuarios } from '@/interfaces/usuarios';
@@ -99,6 +113,7 @@ const usuarios = ref<Usuarios[]>([]);
 
 const cargandoUsuarios = ref(true);
 const cargando = ref(false);
+const escaneando = ref(false);
 const error = ref('');
 const respuesta = ref<Posts | null>(null);
 
@@ -111,6 +126,46 @@ async function cargarUsuarios() {
     error.value = e instanceof Error ? e.message : 'No se pudieron cargar los usuarios';
   } finally {
     cargandoUsuarios.value = false;
+  }
+}
+
+async function escanearQr() {
+  error.value = '';
+  escaneando.value = true;
+
+  try {
+    const resultado = await CapacitorBarcodeScanner.scanBarcode({
+      hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
+      scanInstructions: 'Apunta al QR con los datos del post',
+    });
+
+    let datos: Partial<NuevoPost>;
+
+    try {
+      datos = JSON.parse(resultado.ScanResult);
+    } catch {
+      throw new Error('El QR no contiene un JSON válido');
+    }
+
+    const usuarioId = Number(datos.userId);
+
+    if (
+      typeof datos.title !== 'string' ||
+      typeof datos.body !== 'string' ||
+      !Number.isInteger(usuarioId) ||
+      usuarioId <= 0
+    ) {
+      throw new Error('El QR debe tener los campos title, body y userId');
+    }
+
+    title.value = datos.title;
+    body.value = datos.body;
+    userId.value = usuarioId;
+    respuesta.value = null;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'No se pudo escanear el QR';
+  } finally {
+    escaneando.value = false;
   }
 }
 
